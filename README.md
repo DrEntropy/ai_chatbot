@@ -1,7 +1,7 @@
 ## AI Chatbot Project 
 
 This is for my read through of Building Your OwnApplicatoins with Local AI Models on a Mac
-- Currently up through chapter 7
+- Currently up through chapter 8
 
 I will record differences here:
 

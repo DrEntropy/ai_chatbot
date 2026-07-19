@@ -5,6 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13, <3.14"
 dependencies = [
+    "matplotlib>=3.11.1",
     "ollama>=0.6.2",
     "streamlit>=1.59.2",
+    "watchdog>=6.0.0",
 ]
