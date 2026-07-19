@@ -1,0 +1,33 @@
+Debate Transcript
+========================================
+
+Pro:
+Frequentist statistics clings to rigid definitions – fixed probabilities based solely on long-run frequencies. This is fundamentally flawed. We’re dealing with *individual* observations, not endless repetitions. Bayesianism embraces uncertainty directly, updating our beliefs as new data arrives. It's about logical reasoning, not arbitrary rules. Frankly, frequentist methods often lead to misleading conclusions because they hide the crucial information – our prior beliefs – that shape interpretation.
+
+Con:
+That’s a romanticized view of frequentism. “Arbitrary rules” ensures replicability and comparability across studies. Your reliance on priors introduces subjective bias, rendering results untestable and ultimately less reliable for drawing objective conclusions about the world.
+
+Pro:
+Replicability isn't about identical numbers; it’s about consistent *results* under similar conditions. Frequentist confidence intervals provide a rigorous framework for assessing that consistency. “Subjective bias” is a loaded term. Priors are simply acknowledged starting assumptions – informed guesses grounded in existing knowledge. They’re transparent, allowing scrutiny and adjustment, unlike the black box of frequentist p-values which obscure the entire analytical process. Reliability isn't about eliminating uncertainty, it’s about quantifying it sensibly.
+
+Con:
+“Consistent results” are still dependent on sample size and data distribution – factors frequently misrepresented by Bayesian interpretations. Transparent priors remain susceptible to manipulation, offering a veneer of objectivity while subtly skewing analysis. A p-value *does* reveal the probability of observing the data (or more extreme data) assuming the null hypothesis is true; it’s a direct reflection of evidence against that hypothesis, not an opaque judgment. Sensible quantification requires a foundation in demonstrable reality, not adjustable probabilities.
+
+Pro:
+You're conflating statistical rigor with simplistic interpretations. Sample size and distribution *inform* priors, they don’t dictate them! Bayesian analysis doesn’t ignore these factors; it incorporates them into the updating process. And yes, p-values are susceptible to misinterpretation – a common failing. But frequentist reliance on significance levels is itself a flawed approach, often leading to false positives. Manipulating priors? The beauty of Bayesianism is that sensitivity analyses – exploring different reasonable priors – inherently reveal and address this concern. It’s about acknowledging doubt intelligently, not burying it in a p-value.
+
+Con:
+Sensitivity analyses are a *reaction* to the inherent ambiguity of frequentist inference, not a feature of its design. You're arguing from consequence, not principle. The core issue remains: Bayesianism prioritizes subjective belief over objective evidence. When evidence contradicts a prior, it’s not an “intelligent acknowledgment of doubt”; it’s simply flipping your beliefs based on the data, regardless of whether that data itself is reliable.
+
+Pro:
+That's a fundamental misunderstanding. "Prioritizing subjective belief" isn't about ignoring evidence; it’s about *starting* with what we know – informed guesses refined by observation. Frequentist methods treat all data as equally weighty, regardless of its relevance or quality. It’s the opposite of intelligent reasoning. Contradictory evidence *always* updates our beliefs—that's the very essence of learning!  Rejecting a prior due to new data is not flipping beliefs; it’s revising them based on overwhelming evidence. The core difference lies in accepting uncertainty, rather than demanding impossible certainty.
+
+Con:
+“Overwhelming evidence” is often determined by subjective interpretation within a Bayesian framework. And the act of “revising” a prior based on data isn't learning; it’s an algorithmic exercise devoid of genuine understanding. Frequentist statistics offers a consistent, verifiable method for assessing evidence – a foundation built on demonstrable reality, not shifting sands of probability.
+
+Pro:
+You’ve reduced Bayesianism to a mere algorithm! It’s far more profound than that—it's about *understanding* the relationship between data and our prior knowledge. Verifiability isn’t solely about repeatable calculations; it's about transparent reasoning – clearly stating assumptions, outlining the updating process, and acknowledging uncertainty at every step. Frequentist methods often hide this complexity behind opaque formulas. Ultimately, frequentism seeks to impose a rigid structure on reality, while Bayesianism embraces the messy, uncertain nature of real-world data, offering a far more nuanced and ultimately, more truthful approach.
+
+Con:
+Nuance is achieved through rigorous methodology, not subjective interpretation. Your “messy, uncertain” reality is simply data without an objective framework for analysis. The pursuit of truth demands consistency, comparability, and verifiable results – qualities consistently absent in Bayesian approaches.
+
