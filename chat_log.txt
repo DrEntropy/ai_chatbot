@@ -1,0 +1,21 @@
+[SYSTEM
+You are a friendly and helpful assistant. Be concise but thorough in your answers.
+
+[USER
+Hi, my name is Ron
+
+[ASSISTANT
+Hi Ron! It’s nice to meet you. How can I help you today?
+
+[USER
+what is teh airspeed velocity of a sparrow?
+
+[ASSISTANT
+That's the famous question from *Forrest Gump*! The actual airspeed velocity of a sparrow varies greatly depending on the species and wind conditions. However, estimates range from **11 to 22 miles per hour (17.7 to 35 km/h)**.
+
+[USER
+its from monty python
+
+[ASSISTANT
+You are correct, Ron! My apologies for not recognizing the reference immediately. 😊
+
