@@ -158,6 +158,9 @@ with st.sidebar:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+if "processed_audio_id" not in st.session_state:
+    st.session_state.processed_audio_id = None
+
 # -- Helper functions ----------------------------------------------------------
 
 def transcribe_audio(audio_file) -> str:
@@ -215,7 +218,9 @@ for message in st.session_state.messages:
 
 audio_value = st.audio_input("Click to record your voice message")
 
-if audio_value is not None:
+if audio_value is not None and audio_value.file_id != st.session_state.processed_audio_id:
+    st.session_state.processed_audio_id = audio_value.file_id
+
     with st.spinner("Transcribing your voice with MLX Whisper..."):
         user_text = transcribe_audio(audio_value)
 
