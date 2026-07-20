@@ -1,56 +1,231 @@
-import streamlit as st
+"""voice_chat.py -- Voice-enabled AI chat application.
+
+Speak into your microphone to have a conversation with a local LLM.
+A text input is also available as a fallback.
+
+Requirements:
+    pip install streamlit ollama mlx-whisper sounddevice numpy scipy
+
+Run:
+    streamlit run voice_chat.py
+"""
+
+import json
+import os
+import tempfile
+from pathlib import Path
+
 import mlx_whisper
 import ollama
-import tempfile
-import os
- 
-WHISPER_MODEL = "mlx-community/whisper-medium-mlx"
-OLLAMA_MODEL = "gemma3:4b"
- 
-st.title("🎤 Voice AI Chat")
+import streamlit as st
 
-# initialize the  sesssion state messages
+# -- Model configuration -------------------------------------------------------
+
+CONFIG_PATH = Path(__file__).with_name("model_config.json")
+
+WHISPER_MODELS = {
+    "Small  -- fast, 244 MB  (recommended for 8 GB RAM)":
+        "mlx-community/whisper-small-mlx",
+    "Medium -- balanced, 1.4 GB":
+        "mlx-community/whisper-medium-mlx",
+    "Large v3 -- best quality, 2.9 GB (recommended for 16 GB+ RAM)":
+        "mlx-community/whisper-large-v3-mlx",
+}
+
+# built in default for when model_config.json is not found or is invalid
+DEFAULT_OLLAMA_CONFIG = {
+    "default_model": "gemma3:4b",
+    "models": [
+        {
+            "name": "gemma3:4b",
+            "label": "Gemma 3 4B",
+            "notes": "Lightweight default model.",
+        },
+    ],
+}
+
+
+def normalize_ollama_models(raw_models: list) -> list[dict]:
+    """Normalize config entries into selectable Ollama model definitions."""
+    models = []
+    for item in raw_models:
+        if isinstance(item, str):
+            models.append({"name": item, "label": item, "notes": ""})
+        elif isinstance(item, dict) and item.get("name"):
+            name = str(item["name"])
+            models.append({
+                "name": name,
+                "label": str(item.get("label") or name),
+                "notes": str(item.get("notes") or ""),
+            })
+    return models
+
+
+def load_ollama_config() -> tuple[list[dict], str, str | None]:
+    """Load Ollama model options from model_config.json."""
+    error = None
+    try:
+        with CONFIG_PATH.open(encoding="utf-8") as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        config = {"ollama": DEFAULT_OLLAMA_CONFIG}
+        error = f"{CONFIG_PATH.name} was not found. Using built-in defaults."
+    except json.JSONDecodeError as exc:
+        config = {"ollama": DEFAULT_OLLAMA_CONFIG}
+        error = f"{CONFIG_PATH.name} is invalid JSON: {exc}. Using built-in defaults."
+
+    if not isinstance(config, dict):
+        config = {"ollama": DEFAULT_OLLAMA_CONFIG}
+        error = f"{CONFIG_PATH.name} must contain a JSON object. Using built-in defaults."
+
+    ollama_config = config.get("ollama", {})
+    if not isinstance(ollama_config, dict):
+        ollama_config = DEFAULT_OLLAMA_CONFIG
+        error = f"{CONFIG_PATH.name} has an invalid Ollama section. Using built-in defaults."
+
+    raw_models = ollama_config.get("models", [])
+    if not isinstance(raw_models, list):
+        raw_models = []
+
+    models = normalize_ollama_models(raw_models)
+    if not models:
+        models = normalize_ollama_models(DEFAULT_OLLAMA_CONFIG["models"])
+        error = f"{CONFIG_PATH.name} has no usable Ollama models. Using built-in defaults."
+
+    default_model = str(
+        ollama_config.get("default_model") or DEFAULT_OLLAMA_CONFIG["default_model"]
+    )
+    model_names = {model["name"] for model in models}
+    if default_model not in model_names:
+        default_model = models[0]["name"]
+    return models, default_model, error
+
+# -- Page configuration --------------------------------------------------------
+
+st.set_page_config(page_title="Voice AI Chat", page_icon="🎤", layout="wide")
+st.title("🎤 Voice AI Chat")
+st.caption(
+    "Speak into your microphone -- your voice is transcribed locally by MLX Whisper, "
+    "then answered by a local LLM via Ollama. Nothing leaves your Mac."
+)
+
+ollama_models, default_ollama_model, config_error = load_ollama_config()
+if config_error:
+    st.warning(config_error)
+
+# -- Sidebar -------------------------------------------------------------------
+
+with st.sidebar:
+    st.subheader("Model Settings")
+
+    model_names = [model["name"] for model in ollama_models]
+    model_labels = {model["name"]: model["label"] for model in ollama_models}
+    selected_model_index = model_names.index(default_ollama_model)
+    llm_model = st.selectbox(
+        "LLM Model (Ollama)",
+        model_names,
+        index=selected_model_index,
+        format_func=lambda name: model_labels.get(name, name),
+    )
+    selected_model = next(
+        (model for model in ollama_models if model["name"] == llm_model),
+        None,
+    )
+    if selected_model and selected_model.get("notes"):
+        st.caption(selected_model["notes"])
+
+    whisper_label = st.selectbox("Whisper Model", list(WHISPER_MODELS.keys()))
+    whisper_model = WHISPER_MODELS[whisper_label]
+
+    temperature = st.slider("Temperature", min_value=0.0, max_value=2.0,
+                            value=0.7, step=0.1)
+
+    st.divider()
+
+    if st.button("Clear Conversation", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
+
+    st.divider()
+    st.caption(
+        f"**LLM**: {llm_model}\n\n"
+        f"**Whisper**: {whisper_model.split('/')[-1]}\n\n"
+        f"**Temp**: {temperature}"
+    )
+
+# -- Session state -------------------------------------------------------------
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# display the messages
+# -- Helper functions ----------------------------------------------------------
+
+def transcribe_audio(audio_file) -> str:
+    """Transcribe a Streamlit audio_input value to text.
+
+    Writes a temporary WAV file, calls MLX Whisper, deletes the temp file,
+    and returns the transcript string (empty string if no speech detected).
+    """
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        f.write(audio_file.read())
+        tmp_path = f.name
+    try:
+        result = mlx_whisper.transcribe(tmp_path, path_or_hf_repo=whisper_model)
+        return result["text"].strip()
+    finally:
+        os.unlink(tmp_path)
+
+
+def stream_response(messages: list) -> str:
+    """Send the message history to Ollama and stream the response into the UI.
+
+    Returns the complete response text after streaming finishes.
+    """
+    with st.chat_message("assistant"):
+        placeholder = st.empty()
+        response_text = ""
+        stream = ollama.chat(
+            model=llm_model,
+            messages=messages,
+            stream=True,
+            options={"temperature": temperature},
+        )
+        for chunk in stream:
+            response_text += chunk["message"]["content"]
+            placeholder.markdown(response_text + "▌")
+        placeholder.markdown(response_text)
+    return response_text
+
+
+def handle_user_message(user_text: str) -> None:
+    """Add a user message to session state, display it, and get the AI response."""
+    st.session_state.messages.append({"role": "user", "content": user_text})
+    with st.chat_message("user"):
+        st.markdown(user_text)
+    response = stream_response(st.session_state.messages)
+    st.session_state.messages.append({"role": "assistant", "content": response})
+
+# -- Chat history display ------------------------------------------------------
+
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        st.write(message["content"])
+        st.markdown(message["content"])
 
- 
-audio_value = st.audio_input("Click the microphone to record your message")
- 
+# -- Voice input ---------------------------------------------------------------
+
+audio_value = st.audio_input("Click to record your voice message")
+
 if audio_value is not None:
-    # Transcribe
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        f.write(audio_value.read())
-        tmp_path = f.name
- 
-    with st.spinner("Transcribing..."):
-        result = mlx_whisper.transcribe(tmp_path, path_or_hf_repo=WHISPER_MODEL)
-        user_text = result["text"].strip()
- 
-    os.unlink(tmp_path)
-    
-    if not user_text:
-        st.warning("No speech was detected. Please try again.")
-    else:
-        # Show user messages
-        st.session_state.messages.append({"role": "user", "content": user_text})
-        with st.chat_message("user"):
-            st.markdown(user_text)
+    with st.spinner("Transcribing your voice with MLX Whisper..."):
+        user_text = transcribe_audio(audio_value)
 
-        # Generate AI Reposone
-        with st.chat_message("assistant"):
-            response_text = "" 
-            placeholder = st.empty()
-            stream = ollama.chat(model= OLLAMA_MODEL,
-                messages=st.session_state.messages, stream = True)
-            for chunk in stream:
-                response_text += chunk["message"]["content"]
-                placeholder.markdown(response_text + "▌")
-            placeholder.markdown(response_text)
-        
-        # Add AI message to the session state
-        st.session_state.messages.append({"role": "assistant", "content": response_text})
+    if not user_text:
+        st.warning("No speech detected. Please speak clearly and try again.")
+    else:
+        st.info(f"You said: **{user_text}**")
+        handle_user_message(user_text)
+
+# -- Text fallback input -------------------------------------------------------
+
+if prompt := st.chat_input("Or type your message here..."):
+    handle_user_message(prompt)
