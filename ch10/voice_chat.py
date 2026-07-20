@@ -141,9 +141,11 @@ with st.sidebar:
                             value=0.7, step=0.1)
 
     st.divider()
+    system_prompt = st.text_area("System Prompt", value="You are a helpful assistant. Keep responses concise.", height=100)
+    st.divider()
 
     if st.button("Clear Conversation", use_container_width=True):
-        st.session_state.messages = []
+        st.session_state.messages = [{"role": "system", "content": system_prompt}]
         st.rerun()
 
     st.divider()
@@ -156,7 +158,7 @@ with st.sidebar:
 # -- Session state -------------------------------------------------------------
 
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = [{"role": "system", "content": system_prompt}]
 
 if "processed_audio_id" not in st.session_state:
     st.session_state.processed_audio_id = None
@@ -210,13 +212,14 @@ def handle_user_message(user_text: str) -> None:
 
 # -- Chat history display ------------------------------------------------------
 
-for message in st.session_state.messages:
+# display chat history, but not the system prompt
+for message in st.session_state.messages[1:]:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
 # -- Voice input ---------------------------------------------------------------
 
-audio_value = st.audio_input("Click to record your voice message")
+audio_value = st.audio_input("Click to record, wait a second, then speak")
 
 if audio_value is not None and audio_value.file_id != st.session_state.processed_audio_id:
     st.session_state.processed_audio_id = audio_value.file_id
