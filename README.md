@@ -12,3 +12,9 @@ I will record differences here:
 - Also compare qwen3.6:35b-mlx and others . 
     - Use uv run (or use activate, doesnt matter)
     - use uv add instead of pip, so much of chapter 6 doesnt apply
+
+## Tips
+
+To run streamlit apps:
+`uv run streamlit run app.py`
+Yeah its clunky.
