@@ -109,6 +109,18 @@ def update_context_length() -> None:
         raise RuntimeError(f"{llm_model} is not currently loaded")
     st.session_state.context_length = model.context_length
 
+def summarize_chat() -> str:
+    summary_prompt = "Summarize the following conversation in a concise manner, but make clear what the user asked and what the assistant provided."
+    summary_prompt += "\n\n" + "\n".join([f"{message['role']}: {message['content']}" for message in st.session_state.messages[1:]])
+     
+    summary = ollama.chat(
+        model=llm_model,
+        messages=[{"role":"system", "content": "You are a concise sumarizer."}, {"role":"user", "content": summary_prompt}],
+        options={"temperature": temperature},
+    )
+    print(summary) # for debugging
+    return summary["message"]["content"]
+
 # -- Page configuration --------------------------------------------------------
 
 st.set_page_config(page_title="Voice AI Chat", page_icon="🎤", layout="wide")
@@ -159,25 +171,42 @@ with st.sidebar:
     st.subheader("Chat management")
     if "token_count" not in st.session_state:
         st.session_state.token_count = 0
-    if "prompt_count" not in st.session_state:
-        st.session_state.prompt_count = 0
-  
+
     st.caption(f"**Token Count**: {st.session_state.token_count}")
-    st.caption(f"**Context Remaining**: {st.session_state.context_length-st.session_state.token_count} tokens")
-    projected_tokens = st.session_state.token_count + st.session_state.prompt_count
-    percentage_remaining = (st.session_state.context_length-projected_tokens) / st.session_state.context_length
-    if projected_tokens > 0:
-        st.caption(f"Projected for next turn: {projected_tokens} tokens")
-        st.caption(f"Percentage remaining: {percentage_remaining*100:.2f}%")
+    remaining_tokens = st.session_state.context_length-st.session_state.token_count
+    st.caption(f"**Context Remaining**: {remaining_tokens} tokens")
+    percentage_remaining = remaining_tokens / st.session_state.context_length
+    st.caption(f"Percentage remaining: {percentage_remaining*100:.2f}%")
+
+    # warning if remaining tokens is less then 20% to leave room for summarization.
+    if remaining_tokens < st.session_state.context_length*0.2:
+        st.warning("You are running low on context. Please clear the chat or compact.")
+
+    if "confirm_clear" not in st.session_state:
+        st.session_state.confirm_clear = False
+    if not st.session_state.confirm_clear:
+        if st.button("Clear chat"):
+            st.session_state.confirm_clear = True
+            st.rerun()
     else:
-        st.caption("No projected tokens for next turn")
-        st.caption("Percentage remaining: 0%")
-    
-
-    if st.button("Clear Conversation", use_container_width=True):
-        st.session_state.messages = [{"role": "system", "content": system_prompt}]
+        st.warning("This will delete all chat history, are you sure?")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Yes", use_container_width=True):
+                st.session_state.messages = [{"role": "system", "content": system_prompt}]
+                st.session_state.token_count = 0
+                st.session_state.confirm_clear = False
+                st.rerun()
+        with col2:
+            if st.button("No", use_container_width=True):
+                st.session_state.confirm_clear = False
+                st.rerun()
+    if st.button("Compact chat"):
+        summary = summarize_chat()
+        system_prompt_with_summary = system_prompt + "\n\n Compact summary of the conversation: " + summary
+        st.session_state.messages = [{"role": "system", "content": system_prompt_with_summary}]
+        st.session_state.token_count = 0
         st.rerun()
-
     st.divider()
     st.caption(
         f"**LLM**: {llm_model}\n\n"
@@ -242,8 +271,7 @@ def stream_response(messages: list) -> str:
 
 
 def update_token_count(chunk: dict) -> None:
-    st.session_state.token_count = chunk.eval_count+chunk.prompt_eval_count
-    st.session_state.prompt_count = chunk.prompt_eval_count
+    st.session_state.token_count = chunk.eval_count + chunk.prompt_eval_count
 
 def handle_user_message(user_text: str) -> None:
     """Add a user message to session state, display it, and get the AI response."""
