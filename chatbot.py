@@ -40,13 +40,18 @@ while True:
  
     print("\nAI: ", end="")
     response_text = ""
+    final_chunk = None
     for chunk in stream:
         piece = chunk["message"]["content"]
         print(piece, end="", flush=True)
         response_text += piece
+        if chunk.done:
+            final_chunk = chunk
 
- 
-    print(f"\nEval count: {chunk.eval_count}, Prompt eval count: {chunk.prompt_eval_count}")
+    if final_chunk is None:
+        raise RuntimeError("Ollama stream ended without a final chunk")
+
+    print(f"\nEval count: {final_chunk.eval_count}, Prompt eval count: {final_chunk.prompt_eval_count}")
     ps = ollama.ps()
     model = next(
         (model for model in ps.models if model.model == MODEL_NAME),
@@ -54,7 +59,11 @@ while True:
     )
     if model is None:
         raise RuntimeError(f"{MODEL_NAME} is not currently loaded")
-    tokens_remaining = model.context_length - chunk.eval_count -chunk.prompt_eval_count
+    tokens_remaining = (
+        model.context_length
+        - final_chunk.eval_count
+        - final_chunk.prompt_eval_count
+    )
     print(f"Context length: {model.context_length}")
     print(f"tokens remaining : {tokens_remaining}")
   
