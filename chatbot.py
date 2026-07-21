@@ -245,8 +245,10 @@ if audio_value is not None and audio_value.file_id != st.session_state.processed
     else:
         st.info(f"You said: **{user_text}**")
         handle_user_message(user_text)
+        st.rerun()
 
 # -- Text fallback input -------------------------------------------------------
 
 if prompt := st.chat_input("Or type your message here..."):
     handle_user_message(prompt)
+    st.rerun()
