@@ -127,7 +127,7 @@ def summarize_chat() -> str:
         ],
         options={"temperature": temperature},
     )
-    print(summary)  # for debugging
+    #print(summary)  # for debugging
     return summary["message"]["content"]
 
 
