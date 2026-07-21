@@ -110,16 +110,35 @@ def update_context_length() -> None:
     st.session_state.context_length = model.context_length
 
 def summarize_chat() -> str:
-    summary_prompt = "Summarize the following conversation in a concise manner, but make clear what the user asked and what the assistant provided."
-    summary_prompt += "\n\n" + "\n".join([f"{message['role']}: {message['content']}" for message in st.session_state.messages[1:]])
-     
+    summary_prompt = (
+        "Summarize the following conversation in a concise manner, "
+        "but make clear what the user asked and what the assistant provided."
+    )
+    summary_prompt += "\n\n" + "\n".join(
+        f"{message['role']}: {message['content']}"
+        for message in st.session_state.model_messages[1:]
+    )
+
     summary = ollama.chat(
         model=llm_model,
-        messages=[{"role":"system", "content": "You are a concise sumarizer."}, {"role":"user", "content": summary_prompt}],
+        messages=[
+            {"role": "system", "content": "You are a concise sumarizer."},
+            {"role": "user", "content": summary_prompt},
+        ],
         options={"temperature": temperature},
     )
-    print(summary) # for debugging
+    print(summary)  # for debugging
     return summary["message"]["content"]
+
+
+def reset_model_messages(system_content: str) -> None:
+    st.session_state.model_messages = [{"role": "system", "content": system_content}]
+
+
+def clear_chat(system_content: str) -> None:
+    reset_model_messages(system_content)
+    st.session_state.display_messages = []
+    st.session_state.token_count = 0
 
 # -- Page configuration --------------------------------------------------------
 
@@ -167,10 +186,18 @@ with st.sidebar:
 
     st.divider()
     system_prompt = st.text_area("System Prompt", value="You are a helpful assistant. Keep responses concise.", height=100)
-    st.divider()
-    st.subheader("Chat management")
+
+    if "model_messages" not in st.session_state:
+        reset_model_messages(system_prompt)
+    if "display_messages" not in st.session_state:
+        st.session_state.display_messages = []
     if "token_count" not in st.session_state:
         st.session_state.token_count = 0
+    if "processed_audio_id" not in st.session_state:
+        st.session_state.processed_audio_id = None
+
+    st.divider()
+    st.subheader("Chat management")
 
     st.caption(f"**Token Count**: {st.session_state.token_count}")
     remaining_tokens = st.session_state.context_length-st.session_state.token_count
@@ -193,18 +220,26 @@ with st.sidebar:
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Yes", use_container_width=True):
-                st.session_state.messages = [{"role": "system", "content": system_prompt}]
-                st.session_state.token_count = 0
+                clear_chat(system_prompt)
                 st.session_state.confirm_clear = False
                 st.rerun()
         with col2:
             if st.button("No", use_container_width=True):
                 st.session_state.confirm_clear = False
                 st.rerun()
-    if st.button("Compact chat"):
-        summary = summarize_chat()
-        system_prompt_with_summary = system_prompt + "\n\n Compact summary of the conversation: " + summary
-        st.session_state.messages = [{"role": "system", "content": system_prompt_with_summary}]
+    can_compact = len(st.session_state.model_messages) > 1
+    if st.button("Compact chat", disabled=not can_compact):
+        with st.spinner("Compacting conversation..."):
+            summary = summarize_chat()
+        system_prompt_with_summary = (
+            system_prompt + "\n\nCompact summary of the conversation: " + summary
+        )
+        reset_model_messages(system_prompt_with_summary)
+        st.session_state.display_messages.append({
+            "role": "assistant",
+            "content": summary,
+            "kind": "compact",
+        })
         st.session_state.token_count = 0
         st.rerun()
     st.divider()
@@ -213,16 +248,6 @@ with st.sidebar:
         f"**Whisper**: {whisper_model.split('/')[-1]}\n\n"
         f"**Temp**: {temperature}"
     )
-
-# -- Session state -------------------------------------------------------------
-
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "system", "content": system_prompt}]
-
-if "processed_audio_id" not in st.session_state:
-    st.session_state.processed_audio_id = None
-
-
 
 # -- Helper functions ----------------------------------------------------------
 
@@ -274,19 +299,27 @@ def update_token_count(chunk: dict) -> None:
     st.session_state.token_count = chunk.eval_count + chunk.prompt_eval_count
 
 def handle_user_message(user_text: str) -> None:
-    """Add a user message to session state, display it, and get the AI response."""
-    st.session_state.messages.append({"role": "user", "content": user_text})
+    """Add a user message to display + model context, then get the AI response."""
+    user_message = {"role": "user", "content": user_text}
+    st.session_state.display_messages.append(user_message)
+    st.session_state.model_messages.append(user_message)
     with st.chat_message("user"):
         st.markdown(user_text)
-    response = stream_response(st.session_state.messages)
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    response = stream_response(st.session_state.model_messages)
+    assistant_message = {"role": "assistant", "content": response}
+    st.session_state.display_messages.append(assistant_message)
+    st.session_state.model_messages.append(assistant_message)
 
 # -- Chat history display ------------------------------------------------------
 
-# display chat history, but not the system prompt
-for message in st.session_state.messages[1:]:
+for message in st.session_state.display_messages:
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        if message.get("kind") == "compact":
+            st.info("Conversation compacted for the model.")
+            with st.expander("Summary sent to model"):
+                st.markdown(message["content"])
+        else:
+            st.markdown(message["content"])
 
 # -- Voice input ---------------------------------------------------------------
 
