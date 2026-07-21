@@ -95,6 +95,20 @@ def load_ollama_config() -> tuple[list[dict], str, str | None]:
         default_model = models[0]["name"]
     return models, default_model, error
 
+def ensure_model_loaded(model: str) -> None:
+    ollama.generate(model=model, keep_alive="5m") 
+
+def update_context_length() -> None:
+    ensure_model_loaded(llm_model)
+    ps = ollama.ps()
+    model = next(
+        (model for model in ps.models if model.model == llm_model),
+        None,
+    )
+    if model is None:
+        raise RuntimeError(f"{llm_model} is not currently loaded")
+    st.session_state.context_length = model.context_length
+
 # -- Page configuration --------------------------------------------------------
 
 st.set_page_config(page_title="Voice AI Chat", page_icon="🎤", layout="wide")
@@ -121,6 +135,7 @@ with st.sidebar:
         model_names,
         index=selected_model_index,
         format_func=lambda name: model_labels.get(name, name),
+        on_change=update_context_length,
     )
     selected_model = next(
         (model for model in ollama_models if model["name"] == llm_model),
@@ -128,6 +143,9 @@ with st.sidebar:
     )
     if selected_model and selected_model.get("notes"):
         st.caption(selected_model["notes"])
+    if "context_length" not in st.session_state:
+        with st.spinner("Loading model..."):
+         update_context_length()
 
     whisper_label = st.selectbox("Whisper Model", list(WHISPER_MODELS.keys()))
     whisper_model = WHISPER_MODELS[whisper_label]
@@ -138,12 +156,23 @@ with st.sidebar:
     st.divider()
     system_prompt = st.text_area("System Prompt", value="You are a helpful assistant. Keep responses concise.", height=100)
     st.divider()
+    st.subheader("Chat management")
     if "token_count" not in st.session_state:
         st.session_state.token_count = 0
     if "prompt_count" not in st.session_state:
         st.session_state.prompt_count = 0
+  
     st.caption(f"**Token Count**: {st.session_state.token_count}")
-    st.caption(f"Projected for next turn: {st.session_state.token_count + st.session_state.prompt_count} tokens")
+    st.caption(f"**Context Remaining**: {st.session_state.context_length-st.session_state.token_count} tokens")
+    projected_tokens = st.session_state.token_count + st.session_state.prompt_count
+    percentage_remaining = (st.session_state.context_length-projected_tokens) / st.session_state.context_length
+    if projected_tokens > 0:
+        st.caption(f"Projected for next turn: {projected_tokens} tokens")
+        st.caption(f"Percentage remaining: {percentage_remaining*100:.2f}%")
+    else:
+        st.caption("No projected tokens for next turn")
+        st.caption("Percentage remaining: 0%")
+    
 
     if st.button("Clear Conversation", use_container_width=True):
         st.session_state.messages = [{"role": "system", "content": system_prompt}]
@@ -167,6 +196,7 @@ if "processed_audio_id" not in st.session_state:
 
 
 # -- Helper functions ----------------------------------------------------------
+
 
 def transcribe_audio(audio_file) -> str:
     """Transcribe a Streamlit audio_input value to text.
