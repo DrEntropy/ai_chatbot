@@ -13,8 +13,49 @@ I will record differences here:
     - Use uv run (or use activate, doesnt matter)
     - use uv add instead of pip, so much of chapter 6 doesnt apply
 
+
+## Usage
+
+- Install uv. 
+- Install Ollama, make sure it is running (see below)
+- `uv sync` (not really needed, but nice to get all that out of the way)
+- use `uv run` for everything.
+
 ## Tips
 
 To run streamlit apps:
 `uv run streamlit run app.py`
 Yeah its clunky.
+
+## Set Up Ollama
+
+Pull the models you wish to use and list them in `model_config.json`
+The default model was `gemma3:4b`
+
+ 
+For example;  
+
+```bash
+ollama pull gemma3:4b
+```
+
+and then make sure it is listed in the config.
+
+Then confirm it is available:
+
+```bash
+ollama list
+```
+
+## File structure
+
+- ch10 :  files created for chapter 10. not sure why we put this in a sub folder
+- experiments ; various small scripts to experiment with ollama , streamlit etc.
+
+## Main app
+
+The main app is 'chatbot.py'
+
+```bash
+uv run streamlit run chatbot.py
+```
