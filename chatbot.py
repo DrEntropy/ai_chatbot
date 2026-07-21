@@ -268,14 +268,17 @@ def transcribe_audio(audio_file) -> str:
         os.unlink(tmp_path)
 
 
-def stream_response(messages: list) -> str:
+def stream_response(messages: list) -> tuple[str, str]:
     """Send the message history to Ollama and stream the response into the UI.
 
-    Returns the complete response text after streaming finishes.
+    Returns (content, thinking) after streaming finishes.
     """
     with st.chat_message("assistant"):
-        placeholder = st.empty()
+        thinking_placeholder = st.empty()
+        content_placeholder = st.empty()
+        thinking_text = ""
         response_text = ""
+        final_chunk = None
         stream = ollama.chat(
             model=llm_model,
             messages=messages,
@@ -283,16 +286,27 @@ def stream_response(messages: list) -> str:
             options={"temperature": temperature},
         )
         for chunk in stream:
-            response_text += chunk["message"]["content"]
-            placeholder.markdown(response_text + "▌")
+            message = chunk["message"]
+            thinking_text += message.get("thinking") or ""
+            response_text += message.get("content") or ""
+            if thinking_text:
+                with thinking_placeholder.container():
+                    with st.expander("Thinking", expanded=not response_text):
+                        st.markdown(thinking_text)
+            if response_text:
+                content_placeholder.markdown(response_text + "▌")
             if chunk.done:
                 final_chunk = chunk
         if final_chunk is None:
             raise RuntimeError("Ollama stream ended without a final chunk")
 
         update_token_count(final_chunk)
-        placeholder.markdown(response_text)
-    return response_text
+        if thinking_text:
+            with thinking_placeholder.container():
+                with st.expander("Thinking", expanded=False):
+                    st.markdown(thinking_text)
+        content_placeholder.markdown(response_text)
+    return response_text, thinking_text
 
 
 def update_token_count(chunk: dict) -> None:
@@ -305,10 +319,13 @@ def handle_user_message(user_text: str) -> None:
     st.session_state.model_messages.append(user_message)
     with st.chat_message("user"):
         st.markdown(user_text)
-    response = stream_response(st.session_state.model_messages)
-    assistant_message = {"role": "assistant", "content": response}
-    st.session_state.display_messages.append(assistant_message)
-    st.session_state.model_messages.append(assistant_message)
+    response, thinking = stream_response(st.session_state.model_messages)
+    display_message = {"role": "assistant", "content": response}
+    if thinking:
+        display_message["thinking"] = thinking
+    st.session_state.display_messages.append(display_message)
+    # Model context only needs the final answer, not the thinking trace.
+    st.session_state.model_messages.append({"role": "assistant", "content": response})
 
 # -- Chat history display ------------------------------------------------------
 
@@ -319,6 +336,9 @@ for message in st.session_state.display_messages:
             with st.expander("Summary sent to model"):
                 st.markdown(message["content"])
         else:
+            if message.get("thinking"):
+                with st.expander("Thinking"):
+                    st.markdown(message["thinking"])
             st.markdown(message["content"])
 
 # -- Voice input ---------------------------------------------------------------
