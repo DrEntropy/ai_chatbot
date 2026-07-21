@@ -1,13 +1,8 @@
-"""voice_chat.py -- Voice-enabled AI chat application.
+"""chatbot.py -- Voice-enabled AI chat application.
 
 Speak into your microphone to have a conversation with a local LLM.
 A text input is also available as a fallback.
-
-Requirements:
-    pip install streamlit ollama mlx-whisper sounddevice numpy scipy
-
-Run:
-    streamlit run voice_chat.py
+ 
 """
 
 import json
@@ -143,6 +138,12 @@ with st.sidebar:
     st.divider()
     system_prompt = st.text_area("System Prompt", value="You are a helpful assistant. Keep responses concise.", height=100)
     st.divider()
+    if "token_count" not in st.session_state:
+        st.session_state.token_count = 0
+    if "prompt_count" not in st.session_state:
+        st.session_state.prompt_count = 0
+    st.caption(f"**Token Count**: {st.session_state.token_count}")
+    st.caption(f"Projected for next turn: {st.session_state.token_count + st.session_state.prompt_count} tokens")
 
     if st.button("Clear Conversation", use_container_width=True):
         st.session_state.messages = [{"role": "system", "content": system_prompt}]
@@ -162,6 +163,8 @@ if "messages" not in st.session_state:
 
 if "processed_audio_id" not in st.session_state:
     st.session_state.processed_audio_id = None
+
+
 
 # -- Helper functions ----------------------------------------------------------
 
@@ -198,9 +201,19 @@ def stream_response(messages: list) -> str:
         for chunk in stream:
             response_text += chunk["message"]["content"]
             placeholder.markdown(response_text + "▌")
+            if chunk.done:
+                final_chunk = chunk
+        if final_chunk is None:
+            raise RuntimeError("Ollama stream ended without a final chunk")
+
+        update_token_count(final_chunk)
         placeholder.markdown(response_text)
     return response_text
 
+
+def update_token_count(chunk: dict) -> None:
+    st.session_state.token_count = chunk.eval_count+chunk.prompt_eval_count
+    st.session_state.prompt_count = chunk.prompt_eval_count
 
 def handle_user_message(user_text: str) -> None:
     """Add a user message to session state, display it, and get the AI response."""
