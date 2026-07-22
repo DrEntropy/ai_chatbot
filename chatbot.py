@@ -5,10 +5,8 @@ A text input is also available as a fallback.
  
 """
 
-import json
 import os
 import tempfile
-from pathlib import Path
 
 import mlx_whisper
 import ollama
@@ -16,7 +14,7 @@ import streamlit as st
 
 # -- Model configuration -------------------------------------------------------
 
-CONFIG_PATH = Path(__file__).with_name("model_config.json")
+PREFERRED_OLLAMA_MODEL = "gemma3:4b"
 
 WHISPER_MODELS = {
     "Small  -- fast, 244 MB  (recommended for 8 GB RAM)":
@@ -27,87 +25,80 @@ WHISPER_MODELS = {
         "mlx-community/whisper-large-v3-mlx",
 }
 
-# built in default for when model_config.json is not found or is invalid
-DEFAULT_OLLAMA_CONFIG = {
-    "default_model": "gemma3:4b",
-    "models": [
-        {
-            "name": "gemma3:4b",
-            "label": "Gemma 3 4B",
-            "notes": "Lightweight default model.",
-        },
-    ],
-}
+
+def _model_notes(details) -> str:
+    """Build a short caption from Ollama model details."""
+    if details is None:
+        return ""
+    parts = [
+        part
+        for part in (
+            getattr(details, "family", None) or "",
+            getattr(details, "parameter_size", None) or "",
+            getattr(details, "quantization_level", None) or "",
+        )
+        if part
+    ]
+    return " · ".join(parts)
 
 
-def normalize_ollama_models(raw_models: list) -> list[dict]:
-    """Normalize config entries into selectable Ollama model definitions."""
-    models = []
-    for item in raw_models:
-        if isinstance(item, str):
-            models.append({"name": item, "label": item, "notes": ""})
-        elif isinstance(item, dict) and item.get("name"):
-            name = str(item["name"])
-            models.append({
-                "name": name,
-                "label": str(item.get("label") or name),
-                "notes": str(item.get("notes") or ""),
-            })
-    return models
-
-
-def load_ollama_config() -> tuple[list[dict], str, str | None]:
-    """Load Ollama model options from model_config.json."""
-    error = None
+def list_ollama_models() -> tuple[list[dict], str, str | None]:
+    """Fetch installed Ollama models via ollama.list()."""
     try:
-        with CONFIG_PATH.open(encoding="utf-8") as f:
-            config = json.load(f)
-    except FileNotFoundError:
-        config = {"ollama": DEFAULT_OLLAMA_CONFIG}
-        error = f"{CONFIG_PATH.name} was not found. Using built-in defaults."
-    except json.JSONDecodeError as exc:
-        config = {"ollama": DEFAULT_OLLAMA_CONFIG}
-        error = f"{CONFIG_PATH.name} is invalid JSON: {exc}. Using built-in defaults."
+        response = ollama.list()
+    except Exception as exc:
+        return [], "", f"Could not reach Ollama: {exc}"
 
-    if not isinstance(config, dict):
-        config = {"ollama": DEFAULT_OLLAMA_CONFIG}
-        error = f"{CONFIG_PATH.name} must contain a JSON object. Using built-in defaults."
+    models = []
+    for item in response.models or []:
+        name = getattr(item, "model", None)
+        if not name:
+            continue
+        models.append({
+            "name": name,
+            "label": name,
+            "notes": _model_notes(getattr(item, "details", None)),
+        })
+    models.sort(key=lambda model: model["name"].lower())
 
-    ollama_config = config.get("ollama", {})
-    if not isinstance(ollama_config, dict):
-        ollama_config = DEFAULT_OLLAMA_CONFIG
-        error = f"{CONFIG_PATH.name} has an invalid Ollama section. Using built-in defaults."
-
-    raw_models = ollama_config.get("models", [])
-    if not isinstance(raw_models, list):
-        raw_models = []
-
-    models = normalize_ollama_models(raw_models)
     if not models:
-        models = normalize_ollama_models(DEFAULT_OLLAMA_CONFIG["models"])
-        error = f"{CONFIG_PATH.name} has no usable Ollama models. Using built-in defaults."
+        return [], "", "No Ollama models found. Pull a model with `ollama pull`, then refresh."
 
-    default_model = str(
-        ollama_config.get("default_model") or DEFAULT_OLLAMA_CONFIG["default_model"]
-    )
     model_names = {model["name"] for model in models}
-    if default_model not in model_names:
-        default_model = models[0]["name"]
-    return models, default_model, error
+    default_model = (
+        PREFERRED_OLLAMA_MODEL
+        if PREFERRED_OLLAMA_MODEL in model_names
+        else models[0]["name"]
+    )
+    return models, default_model, None
 
 def ensure_model_loaded(model: str) -> None:
-    ollama.generate(model=model, keep_alive="5m") 
+    ollama.generate(model=model, keep_alive="5m")
+
+
+def context_length_from_show(model_name: str) -> int:
+    """Read max context length from ollama.show (works for local and cloud models)."""
+    info = ollama.show(model_name)
+    modelinfo = getattr(info, "modelinfo", None) or {}
+    for key, value in modelinfo.items():
+        if str(key).endswith("context_length"):
+            return int(value)
+    raise RuntimeError(f"Could not determine context length for {model_name}")
+
 
 def update_context_length() -> None:
-    ensure_model_loaded(llm_model)
+    model_name = st.session_state.llm_model
+    ensure_model_loaded(model_name)
     ps = ollama.ps()
-    model = next(
-        (model for model in ps.models if model.model == llm_model),
+    loaded = next(
+        (model for model in ps.models if model.model == model_name),
         None,
     )
-    if model is None:
-        raise RuntimeError(f"{llm_model} is not currently loaded")
-    st.session_state.context_length = model.context_length
+    if loaded is not None and loaded.context_length:
+        st.session_state.context_length = loaded.context_length
+        return
+    # Cloud models are served remotely and typically never appear in ollama.ps().
+    st.session_state.context_length = context_length_from_show(model_name)
 
 def summarize_chat() -> str:
     summary_prompt = (
@@ -149,9 +140,10 @@ st.caption(
     "then answered by a local LLM via Ollama. Nothing leaves your Mac."
 )
 
-ollama_models, default_ollama_model, config_error = load_ollama_config()
-if config_error:
-    st.warning(config_error)
+ollama_models, default_ollama_model, list_error = list_ollama_models()
+if list_error:
+    st.error(list_error)
+    st.stop()
 
 # -- Sidebar -------------------------------------------------------------------
 
@@ -160,13 +152,15 @@ with st.sidebar:
 
     model_names = [model["name"] for model in ollama_models]
     model_labels = {model["name"]: model["label"] for model in ollama_models}
-    selected_model_index = model_names.index(default_ollama_model)
+    if st.session_state.get("llm_model") not in model_names:
+        # Initial default, or drop a stale selection (model removed from Ollama).
+        st.session_state.llm_model = default_ollama_model
     llm_model = st.selectbox(
         "LLM Model (Ollama)",
         model_names,
-        index=selected_model_index,
         format_func=lambda name: model_labels.get(name, name),
         on_change=update_context_length,
+        key="llm_model",
     )
     selected_model = next(
         (model for model in ollama_models if model["name"] == llm_model),
@@ -176,7 +170,7 @@ with st.sidebar:
         st.caption(selected_model["notes"])
     if "context_length" not in st.session_state:
         with st.spinner("Loading model..."):
-         update_context_length()
+            update_context_length()
 
     whisper_label = st.selectbox("Whisper Model", list(WHISPER_MODELS.keys()))
     whisper_model = WHISPER_MODELS[whisper_label]

@@ -29,19 +29,16 @@ Yeah its clunky.
 
 ## Set Up Ollama
 
-Pull the models you wish to use and list them in `model_config.json`
-The default model was `gemma3:4b`
+Pull the models you wish to use. The app discovers them automatically via `ollama.list`
+(preferred default: `gemma3:4b` when installed).
 
- 
-For example;  
+For example:
 
 ```bash
 ollama pull gemma3:4b
 ```
 
-and then make sure it is listed in the config.
-
-Then confirm it is available:
+Confirm installed models:
 
 ```bash
 ollama list
