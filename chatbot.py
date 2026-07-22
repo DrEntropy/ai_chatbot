@@ -42,8 +42,13 @@ def _model_notes(details) -> str:
     return " · ".join(parts)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def list_ollama_models() -> tuple[list[dict], str, str | None]:
-    """Fetch installed Ollama models via ollama.list()."""
+    """Fetch installed Ollama models via ollama.list().
+
+    Cached for 60s so Streamlit's per-interaction reruns don't hit the Ollama
+    daemon on every keystroke. Newly pulled models appear within the TTL.
+    """
     try:
         response = ollama.list()
     except Exception as exc:
